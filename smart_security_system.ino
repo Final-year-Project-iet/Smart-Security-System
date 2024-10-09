@@ -1,449 +1,292 @@
 #include <Keypad.h>
-
 #include <LiquidCrystal.h>
 #include <Servo.h>
 
 Servo myservo;
-int pos=0; // LCD Connections
-LiquidCrystal lcd(A0,A1,A2,A3,A4,A5);
-const byte rows=4;
-const byte cols=3;
+int pos = 0;
+LiquidCrystal lcd(A0, A1, A2, A3, A4, A5);
+const byte rows = 4;
+const byte cols = 3;
 
-char key[rows][cols]={
-{'1','2','3'},
-{'4','5','6'},
-{'7','8','9'},
-{'*','0','#'}
+char key[rows][cols] = {
+  {'1', '2', '3'},
+  {'4', '5', '6'},
+  {'7', '8', '9'},
+  {'*', '0', '#'}
 };
-byte rowPins[rows]={1,2,3,4};
-byte colPins[cols]={5,6,7};
-Keypad keypad= Keypad(makeKeymap(key),rowPins,colPins,rows,cols);
-char* password="4567";
-int currentposition=0;
-int redled=10;
-int greenled=11;
-int buzz=8;
-int invalidcount=12;
+byte rowPins[rows] = {1, 2, 3, 4};
+byte colPins[cols] = {5, 6, 7};
+Keypad keypad = Keypad(makeKeymap(key), rowPins, colPins, rows, cols);
+char* password = "4567";
+int currentposition = 0;
+int redled = 10;
+int greenled = 11;
+int buzz = 8;
+int invalidcount = 0;
 
 const int ULTRASONIC_PIN = 12;
 const int PIR_PIN = 13;
 
-long readUltrasonicDistance()
-{
-  pinMode(ULTRASONIC_PIN, OUTPUT);  // Clear the trigger
+bool isArmed = true; 
+
+long readUltrasonicDistance() {
+  pinMode(ULTRASONIC_PIN, OUTPUT);
   digitalWrite(ULTRASONIC_PIN, LOW);
   delayMicroseconds(2);
-  // Sets the trigger pin to HIGH state for 10 microseconds
   digitalWrite(ULTRASONIC_PIN, HIGH);
   delayMicroseconds(10);
   digitalWrite(ULTRASONIC_PIN, LOW);
   pinMode(ULTRASONIC_PIN, INPUT);
-  // Reads the echo pin, and returns the sound wave travel time in microseconds
   return pulseIn(ULTRASONIC_PIN, HIGH);
 }
 
-
-
-void setup()
-{
-
-displayscreen();
-Serial.begin(9600);
-pinMode(redled, OUTPUT);
-pinMode(greenled, OUTPUT);
-pinMode(buzz, OUTPUT);
-pinMode(PIR_PIN, INPUT);
-myservo.attach(9); //SERVO ATTACHED//
-
-lcd.begin(16,2);
-
+void setup() {
+  Serial.begin(9600);
+  pinMode(redled, OUTPUT);
+  pinMode(greenled, OUTPUT);
+  pinMode(buzz, OUTPUT);
+  pinMode(PIR_PIN, INPUT);
+  myservo.attach(9);
+  lcd.begin(16, 2);
+  displayArmedStatus();
 }
 
-void loop()
-{
-  if(currentposition==0)
-  {
-    displayscreen();
+void loop() {
+  if (currentposition == 0) {
+    displayArmedStatus();
   }
   
-  // Measure distance using ultrasonic sensor
-  long duration = readUltrasonicDistance();
-  int distance = duration * 0.034 / 2;  // Calculate distance in cm
-   Serial.println(distance);
-  
-   int pirState = digitalRead(PIR_PIN);
-   Serial.println(pirState);
-
-
-  // If an object is detected within 50cm, trigger an alert
-  
-    if ((distance > 0 && distance < 50) || pirState == HIGH) {
+  char code = keypad.getKey();
+  if (code != NO_KEY) {
     lcd.clear();
-    lcd.setCursor(0,0);
-    if (distance > 0 && distance < 50) {
-      lcd.print("Object detected!");
-      lcd.setCursor(0,1);
-      lcd.print("Distance: ");
-      lcd.print(distance);
-      lcd.print(" cm");
-    } else {
-      lcd.print("Motion detected!");
-    }
-    digitalWrite(redled, HIGH);
-    digitalWrite(buzz, HIGH);
-    delay(1000);
-    digitalWrite(redled, LOW);
-    digitalWrite(buzz, LOW);
-  }
-  
-  
-  int l ;
-/*  char code=keypad.getKey();
-  if(code!=NO_KEY)
-  {
-    lcd.clear();
-    lcd.setCursor(0,0);
+    lcd.setCursor(0, 0);
     lcd.print("PASSWORD:");
-    lcd.setCursor(7,1);
+    lcd.setCursor(7, 1);
     lcd.print(" ");
-    lcd.setCursor(7,1);
-    for(l=0;l<=currentposition;++l)
-    {
+    lcd.setCursor(7, 1);
+    for (int l = 0; l <= currentposition; ++l) {
       lcd.print("*");
       keypress();
     }
 
-    if (code==password[currentposition])
-    {
+    if (code == password[currentposition]) {
       ++currentposition;
-      if(currentposition==4)
-      {
-        unlockdoor();
-        currentposition=0;
+      if (currentposition == 4) {
+        toggleArmStatus();
+        currentposition = 0;
       }
-    }
-    else
-    {
+    } else {
       ++invalidcount;
       incorrect();
-      currentposition=0;
+      currentposition = 0;
     }
-    if(invalidcount==5)
-    {
-      ++invalidcount;
+    
+    if (invalidcount == 3) {
       torture1();
     }
-    if(invalidcount==8)
-    {
+    if (invalidcount == 4) {
       torture2();
     }
   }
-  */
+  
+  if (isArmed) {
+    long duration = readUltrasonicDistance();
+    int distance = duration * 0.034 / 2;
+    int pirState = digitalRead(PIR_PIN);
+    
+    if ((distance > 0 && distance < 50) || pirState == HIGH) {
+      triggerAlarm(distance, pirState);
+    }
+  }
 }
 
-//**********//
-
-void unlockdoor()
-{
-delay(900);
-
-lcd.setCursor(0,0);
-lcd.println(" ");
-lcd.setCursor(1,0);
-lcd.print("Access Granted");
-lcd.setCursor(4,1);
-lcd.println("WELCOME!!");
-lcd.setCursor(15,1);
-lcd.println(" ");
-lcd.setCursor(16,1);
-lcd.println(" ");
-lcd.setCursor(14,1);
-lcd.println(" ");
-lcd.setCursor(13,1);
-lcd.println(" ");
-unlockbuzz();
-
-for(pos = 180; pos>=0; pos-=5) // goes from 180 degrees to 0 degrees
-{
-myservo.write(pos); // tell servo to go to position in variable 'pos'
-delay(5); // waits 15ms for the servo to reach the position
-}
-delay(2000);
-
-
-
-delay(1000);
-counterbeep();
-
-delay(1000);
-
-for(pos = 0; pos <= 180; pos +=5) // goes from 0 degrees to 180 degrees
-{ // in steps of 1 degree
-myservo.write(pos); // tell servo to go to position in variable 'pos'
-delay(15);
-
-
-currentposition=0;
-
-lcd.clear();
-displayscreen();
-
-}
+void displayArmedStatus() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  if (isArmed) {
+    lcd.print("SYSTEM ARMED");
+    digitalWrite(redled, HIGH);
+    digitalWrite(greenled, LOW);
+  } else {
+    lcd.print("SYSTEM DISARMED");
+    digitalWrite(redled, LOW);
+    digitalWrite(greenled, HIGH);
+  }
+  lcd.setCursor(0, 1);
+  lcd.print("Enter code:");
 }
 
-//******//
-
-void incorrect()
-{
-delay(500);
-lcd.clear();
-lcd.setCursor(1,0);
-lcd.print("CODE");
-lcd.setCursor(6,0);
-lcd.print("INCORRECT");
-lcd.setCursor(15,1);
-lcd.println(" ");
-lcd.setCursor(4,1);
-lcd.println("GET AWAY!!!");
-
-lcd.setCursor(13,1);
-lcd.println(" ");
-Serial.println("CODE INCORRECT YOU ARE UNAUTHORIZED");
-digitalWrite(redled, HIGH);
-digitalWrite(buzz, HIGH);
-delay(3000);
-lcd.clear();
-digitalWrite(redled, LOW);
-digitalWrite(buzz,LOW);
-displayscreen();
-}
-//**************//
-void clearscreen()
-{
-lcd.setCursor(0,0);
-lcd.println(" ");
-lcd.setCursor(0,1);
-lcd.println(" ");
-lcd.setCursor(0,2);
-lcd.println(" ");
-lcd.setCursor(0,3);
-lcd.println(" ");
-}
-//***K*****//
-void keypress()
-{
-
-
-
-digitalWrite(buzz, HIGH);
-delay(50);
-digitalWrite(buzz, LOW);
-}
-//************//
-void displayscreen()
-{
-
-lcd.setCursor(0,0);
-lcd.println("*ENTER THE CODE*");
-lcd.setCursor(1 ,1);
-
-lcd.println("TO _/_ (OPEN)!!");
-}
-//*********//
-void armservo()
-{
-
-for (pos=180;pos<=180;pos+=50)
-{
-myservo.write(pos);
-delay(5);
-}
-delay(5000);
-
-for(pos=180;pos>=0;pos-=50)
-{
-myservo.write(pos);
+void toggleArmStatus() {
+  isArmed = !isArmed;
+  if (isArmed) {
+    lcd.clear();
+    lcd.setCursor(1, 0);
+    lcd.print("SYSTEM ARMED");
+    digitalWrite(redled, HIGH);
+    digitalWrite(greenled, LOW);
+  } else {
+    unlockdoor();
+  }
+  delay(2000);
+  displayArmedStatus();
 }
 
-}
-//****************//
-void unlockbuzz()
-{
-
-digitalWrite(buzz, HIGH);
-delay(80);
-digitalWrite(buzz, LOW);
-delay(80);
-digitalWrite(buzz, HIGH);
-delay(80);
-digitalWrite(buzz, LOW);
-delay(200);
-digitalWrite(buzz, HIGH);
-delay(80);
-digitalWrite(buzz, LOW);
-delay(80);
-digitalWrite(buzz, HIGH);
-delay(80);
-digitalWrite(buzz, LOW);
-delay(80);
+void triggerAlarm(int distance, int pirState) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  if (distance > 0 && distance < 50) {
+    lcd.print("Object detected!");
+    lcd.setCursor(0, 1);
+    lcd.print("Distance: ");
+    lcd.print(distance);
+    lcd.print(" cm");
+  } else {
+    lcd.print("Motion detected!");
+  }
+  digitalWrite(redled, HIGH);
+  digitalWrite(buzz, HIGH);
+  delay(1000);
+  digitalWrite(redled, LOW);
+  digitalWrite(buzz, LOW);
+  displayArmedStatus();
 }
 
-//****************//
-void counterbeep()
-{
-delay(1200);
+void unlockdoor() {
+  lcd.setCursor(0, 0);
+  lcd.println(" ");
+  lcd.setCursor(1, 0);
+  lcd.print("Access Granted");
+  lcd.setCursor(4, 1);
+  lcd.println("WELCOME!!");
+  unlockbuzz();
 
-
-lcd.clear();
-digitalWrite(buzz, HIGH);
-
-lcd.setCursor(2,15);
-lcd.println(" ");
-lcd.setCursor(2,14);
-lcd.println(" ");
-lcd.setCursor(2,0);
-delay(200);
-lcd.println("GET IN WITHIN:::");
-
-lcd.setCursor(4,1);
-lcd.print("5");
-delay(200);
-lcd.clear();
-lcd.setCursor(2,0);
-lcd.println("GET IN WITHIN:");
-digitalWrite(buzz,LOW);
-delay(1000);
-//2
-digitalWrite(buzz, HIGH);
-lcd.setCursor(2,0);
-lcd.println("GET IN WITHIN:");
-lcd.setCursor(4,1); //2
-lcd.print("4");
-delay(100);
-lcd.clear();
-lcd.setCursor(2,0);
-lcd.println("GET IN WITHIN:");
-digitalWrite(buzz,LOW);
-delay(1000);
-//3
-digitalWrite(buzz, HIGH);
-lcd.setCursor(2,0);
-lcd.println("GET IN WITHIN:");
-lcd.setCursor(4,1); //3
-lcd.print("3");
-delay(100);
-lcd.clear();
-lcd.setCursor(2,0);
-lcd.println("GET IN WITHIN:");
-digitalWrite(buzz,LOW);
-delay(1000);
-//4
-digitalWrite(buzz, HIGH);
-lcd.setCursor(2,0);
-lcd.println("GET IN WITHIN:");
-lcd.setCursor(4,1); //4
-lcd.print("2");
-delay(100);
-lcd.clear();
-lcd.setCursor(2,0);
-lcd.println("GET IN WITHIN:");
-digitalWrite(buzz,LOW);
-delay(1000);
-//
-digitalWrite(buzz, HIGH);
-lcd.setCursor(4,1);
-lcd.print("1");
-delay(100);
-lcd.clear();
-lcd.setCursor(2,0);
-lcd.println("GET IN WITHIN::");
-digitalWrite(buzz,LOW);
-delay(1000);
-//5
-digitalWrite(buzz, HIGH);
-delay(40);
-digitalWrite(buzz,LOW);
-delay(40);
-digitalWrite(buzz, HIGH);
-delay(40);
-digitalWrite(buzz,LOW);
-delay(40);
-digitalWrite(buzz, HIGH);
-delay(40);
-digitalWrite(buzz,LOW);
-delay(40);
-digitalWrite(buzz, HIGH);
-delay(40);
-digitalWrite(buzz,LOW);
-lcd.clear();
-lcd.setCursor(2,0);
-lcd.print("RE-LOCKING");
-delay(500);
-lcd.setCursor(12,0);
-lcd.print(".");
-delay(500);
-lcd.setCursor(13,0);
-lcd.print(".");
-delay(500);
-lcd.setCursor(14,0);
-lcd.print(".");
-delay(400);
-lcd.clear();
-lcd.setCursor(4,0);
-lcd.print("LOCKED!");
-delay(440);
+  for (pos = 180; pos >= 0; pos -= 5) {
+    myservo.write(pos);
+    delay(5);
+  }
+  delay(2000);
+  
+  counterbeep();
+  
+  for (pos = 0; pos <= 180; pos += 5) {
+    myservo.write(pos);
+    delay(15);
+  }
 }
-//*******T*********//
-void torture1()
-{
-delay(1000);
-lcd.clear();
-lcd.setCursor(2,0);
-lcd.print("WAIT FOR ");
-lcd.setCursor(5,1);
-lcd.print("15 SECONDS");
-digitalWrite(buzz, HIGH);
-delay(15000);
-digitalWrite(buzz, LOW);
-lcd.clear();
-lcd.setCursor(2,0);
-lcd.print("LOL..");
-lcd.setCursor(1,1);
-lcd.print(" HOW WAS THAT??");
-delay(3500);
-lcd.clear();
 
+void incorrect() {
+  delay(500);
+  lcd.clear();
+  lcd.setCursor(1, 0);
+  lcd.print("CODE");
+  lcd.setCursor(6, 0);
+  lcd.print("INCORRECT");
+  lcd.setCursor(4, 1);
+  lcd.println("GET AWAY!!!");
+  Serial.println("CODE INCORRECT YOU ARE UNAUTHORIZED");
+  digitalWrite(redled, HIGH);
+  digitalWrite(buzz, HIGH);
+  delay(3000);
+  lcd.clear();
+  digitalWrite(redled, LOW);
+  digitalWrite(buzz, LOW);
+  displayArmedStatus();
 }
-//**T2***//
-void torture2()
-{
-delay(1000);
-lcd.setCursor(1,0);
-lcd.print(" ");
-lcd.setCursor(2,0);
-lcd.print("EAR DRUMS ARE");
-lcd.setCursor(0,1);
-lcd.print(" PRECIOUS!! ");
-delay(1500
-     );
-lcd.clear();
-lcd.setCursor(1,0);
-lcd.print(" WAIT FOR");
-lcd.setCursor(4,1);
-lcd.print(" 1 MINUTE");
-digitalWrite(buzz, HIGH);
-delay(55000);
-counterbeep();
-lcd.clear();
-digitalWrite(buzz, LOW);
-lcd.setCursor(2,0);
-lcd.print("WANT ME TO");
-lcd.setCursor(1,1);
-lcd.print("REDICULE MORE??");
-delay(2500);
-lcd.clear();
-lcd.setCursor(2,0);
-lcd.print("Ha Ha Ha Ha");
-delay(1700);
-lcd.clear();
+
+void keypress() {
+  digitalWrite(buzz, HIGH);
+  delay(50);
+  digitalWrite(buzz, LOW);
+}
+
+void unlockbuzz() {
+  for (int i = 0; i < 4; i++) {
+    digitalWrite(buzz, HIGH);
+    delay(80);
+    digitalWrite(buzz, LOW);
+    delay(80);
+  }
+}
+
+void counterbeep() {
+  for (int i = 5; i > 0; i--) {
+    lcd.clear();
+    lcd.setCursor(2, 0);
+    lcd.println("GET IN WITHIN:");
+    lcd.setCursor(4, 1);
+    lcd.print(i);
+    digitalWrite(buzz, HIGH);
+    delay(100);
+    digitalWrite(buzz, LOW);
+    delay(900);
+  }
+  
+  for (int i = 0; i < 4; i++) {
+    digitalWrite(buzz, HIGH);
+    delay(40);
+    digitalWrite(buzz, LOW);
+    delay(40);
+  }
+  
+  lcd.clear();
+  lcd.setCursor(2, 0);
+  lcd.print("RE-LOCKING");
+  for (int i = 0; i < 3; i++) {
+    delay(500);
+    lcd.setCursor(12 + i, 0);
+    lcd.print(".");
+  }
+  delay(400);
+  lcd.clear();
+  lcd.setCursor(4, 0);
+  lcd.print("LOCKED!");
+  delay(440);
+}
+
+void torture1() {
+  delay(1000);
+  lcd.clear();
+  lcd.setCursor(2, 0);
+  lcd.print("WAIT FOR ");
+  lcd.setCursor(5, 1);
+  lcd.print("15 SECONDS");
+  digitalWrite(buzz, HIGH);
+  delay(15000);
+  digitalWrite(buzz, LOW);
+  lcd.clear();
+  lcd.setCursor(2, 0);
+  lcd.print("LOL..");
+  lcd.setCursor(1, 1);
+  lcd.print(" HOW WAS THAT??");
+  delay(3500);
+  lcd.clear();
+}
+
+void torture2() {
+  delay(1000);
+  lcd.setCursor(2, 0);
+  lcd.print("EAR DRUMS ARE");
+  lcd.setCursor(0, 1);
+  lcd.print(" PRECIOUS!! ");
+  delay(1500);
+  lcd.clear();
+  lcd.setCursor(1, 0);
+  lcd.print(" WAIT FOR");
+  lcd.setCursor(4, 1);
+  lcd.print(" 1 MINUTE");
+  digitalWrite(buzz, HIGH);
+  delay(55000);
+  counterbeep();
+  lcd.clear();
+  digitalWrite(buzz, LOW);
+  lcd.setCursor(2, 0);
+  lcd.print("WANT ME TO");
+  lcd.setCursor(1, 1);
+  lcd.print("REDICULE MORE??");
+  delay(2500);
+  lcd.clear();
+  lcd.setCursor(2, 0);
+  lcd.print("Ha Ha Ha Ha");
+  delay(1700);
+  lcd.clear();
 }
